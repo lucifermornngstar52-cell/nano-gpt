@@ -13,7 +13,8 @@ NH  = int(os.environ.get('NH', '8'))      # голов
 CTX = int(os.environ.get('CTX', '256'))   # контекст
 STEPS = int(os.environ.get('STEPS', '6000'))
 BS  = int(os.environ.get('BS', '64'))
-LR  = float(os.environ.get('LR', '3e-3'))
+_lr_default = '3e-3' if DM <= 128 else ('1e-3' if DM <= 384 else '4e-4')
+LR  = float(os.environ.get('LR', _lr_default))
 START = int(os.environ.get('START', '0')) # резюм
 
 # ── корпус ──
@@ -34,12 +35,17 @@ class Block(nn.Module):
     def __init__(self):
         super().__init__()
         s = math.sqrt(2.0 / DM)
-        for nm in ('q', 'k', 'v', 'o'):
+        for nm in ('q', 'k', 'v'):
             setattr(self, nm, nn.Parameter(torch.empty(DM, DM)))
             nn.init.uniform_(getattr(self, nm), -s, s)
+        # o и fc2 сидят на выходе residual-ветки - уменьшаем масштаб с глубиной (как в GPT-2),
+        # иначе на 10+ слоях residual-сумма взрывается и логиты уходят в NaN
+        s_out = s / math.sqrt(2 * NL)
+        self.o = nn.Parameter(torch.empty(DM, DM)); nn.init.uniform_(self.o, -s_out, s_out)
         s2 = math.sqrt(2.0 / (4 * DM))
         self.fc = nn.Parameter(torch.empty(DM, 4 * DM)); nn.init.uniform_(self.fc, -s2, s2)
-        self.fc2 = nn.Parameter(torch.empty(4 * DM, DM)); nn.init.uniform_(self.fc2, -s2, s2)
+        s2_out = s2 / math.sqrt(2 * NL)
+        self.fc2 = nn.Parameter(torch.empty(4 * DM, DM)); nn.init.uniform_(self.fc2, -s2_out, s2_out)
         self.ln1 = nn.LayerNorm(DM); self.ln2 = nn.LayerNorm(DM)
     def forward(self, x):
         B, Tt, _ = x.shape
@@ -102,8 +108,14 @@ def sample(prompt="В: как дела?\nО:", n=60, temp=0.8, topk=8):
     out = prompt
     for _ in range(n):
         lg = model(idx[:, -T:])[0, -1] / temp
+        if not torch.isfinite(lg).all():
+            out += ' [NaN]'
+            break
         k = torch.topk(lg, topk)
         probs = torch.softmax(k.values, dim=-1)
+        if not torch.isfinite(probs).all() or probs.sum() <= 0:
+            out += ' [NaN]'
+            break
         ni = k.indices[torch.multinomial(probs, 1)]
         ch = vocab[ni.item()]
         out += ch
@@ -147,9 +159,17 @@ def main():
             logits = model(x)
             loss = torch.nn.functional.cross_entropy(logits.view(-1, V), y.view(-1))
         opt.zero_grad(set_to_none=True)
+        if not torch.isfinite(loss):
+            print('  [шаг %d] loss не число (%s) - пропускаю шаг, ужимаю LR x0.7' % (step, loss.item()), flush=True)
+            for g in opt.param_groups: g['lr'] *= 0.7
+            continue
         scaler.scale(loss).backward()
         scaler.unscale_(opt)
-        torch.nn.utils.clip_grad_norm_(model.parameters(), 1.0)
+        gn = torch.nn.utils.clip_grad_norm_(model.parameters(), 1.0)
+        if not torch.isfinite(gn):
+            print('  [шаг %d] градиент не число - пропускаю шаг' % step, flush=True)
+            scaler.update()
+            continue
         scaler.step(opt)
         scaler.update()
         if step % 100 == 0 or step == 1:
