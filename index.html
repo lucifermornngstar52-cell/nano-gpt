@@ -93,7 +93,7 @@ function mkEngine(W,cfg){
   return {forward,generate};
 }
 
-const model=mkEngine(W,{V:66,D:96,L:3,H:4,hs:%%HS%%,T:128});
+const model=mkEngine(W,{V:66,D:96,L:3,H:4,hs:24,T:128});
 const chat=document.getElementById('chat');let hist='';
 function add(cls,txt){const d=document.createElement('div');d.className='m '+cls;d.textContent=txt;chat.appendChild(d);chat.scrollTop=chat.scrollHeight;}
 add('n','привет! я нано-гпт, обучен с нуля. задай вопрос из простых: как дела, кто ты, расскажи шутку, пока...');
