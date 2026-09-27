@@ -18,11 +18,18 @@ LR  = float(os.environ.get('LR', _lr_default))
 START = int(os.environ.get('START', '0')) # резюм
 
 # ── корпус ──
-pairs = [json.loads(l) for l in gzip.open('pairs.jsonl.gz', 'rt', encoding='utf-8')]
-corpus = ''.join("В: %s\nО: %s\n\n" % (p['q'], p['a']) for p in pairs)
+# DATA может быть: pairs.jsonl.gz (старые пары) или corpus_big.txt.gz (готовый текст)
+DATA = os.environ.get('DATA', 'pairs.jsonl.gz')
+if DATA.endswith('pairs.jsonl.gz'):
+    pairs = [json.loads(l) for l in gzip.open(DATA, 'rt', encoding='utf-8')]
+    corpus = ''.join("В: %s\nО: %s\n\n" % (p['q'], p['a']) for p in pairs)
+else:
+    with gzip.open(DATA, 'rt', encoding='utf-8') as f:
+        corpus = f.read()
 vocab = sorted(set(corpus))
 stoi = {c: i for i, c in enumerate(vocab)}
-print('корпус: %d символов, vocab %d, пар %d' % (len(corpus), len(vocab), len(pairs)))
+n_pairs = len(pairs) if DATA.endswith('pairs.jsonl.gz') else corpus.count('В: ')
+print('корпус: %d символов, vocab %d, реплик ~%d' % (len(corpus), len(vocab), n_pairs))
 
 ids_cpu = torch.tensor([stoi[c] for c in corpus], dtype=torch.long)
 V, T, hs = len(vocab), CTX, DM // NH

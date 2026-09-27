@@ -36,3 +36,11 @@ python3 train.py         # дообучение (STEPS=2600)
 `make_web50.py`: квантует weights_big.npz в int8 (~66 МБ w50.json) и собирает чат-страницу.
 Задеплоено: https://lucifermornngstar52-cell.github.io/neon-strike/nano50/
 Ошибка логитов после int8: ~0.4%, топ-токены совпадают.
+
+## 150M: мультидиалоговый корпус
+
+`build_corpus_big.py` собирает корпус из ru_turbo_saiga + saiga_scored_ru_chatml + OASST(ru) + pairs.jsonl:
+154k диалогов, 184k реплик, 95M символов, vocab 277 (мусорные юникод-символы вычищены по частотности).
+
+`colab_train_150m.ipynb`: d_model 1024, 12 слоёв, 16 голов, ctx 512, ~4-8 ч на T4.
+Мультидиалоги в корпусе → модель учится связывать реплики в тему.
