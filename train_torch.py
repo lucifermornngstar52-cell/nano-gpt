@@ -125,7 +125,13 @@ def export(step, lossv):
     np.savez_compressed('weights_big.npz', **sd_np)
     json.dump(dict(vocab=vocab, cfg=dict(d_model=DM, n_layer=NL, n_head=NH, ctx=CTX)),
               open('meta.json', 'w', encoding='utf-8'), ensure_ascii=False)
-    print('  сохранено (шаг %d, loss %.3f)' % (step, lossv), flush=True)
+    ck = os.environ.get('CKPT', '')
+    if ck:
+        os.makedirs(ck, exist_ok=True)
+        np.savez_compressed(os.path.join(ck, 'weights_big.npz'), **sd_np)
+        json.dump(dict(vocab=vocab, cfg=dict(d_model=DM, n_layer=NL, n_head=NH, ctx=CTX)),
+                  open(os.path.join(ck, 'meta.json'), 'w', encoding='utf-8'), ensure_ascii=False)
+    print('  сохранено (шаг %d, loss %.3f)%s' % (step, lossv, ' + на Drive' if ck else ''), flush=True)
 
 def main():
     t0 = time.time()
