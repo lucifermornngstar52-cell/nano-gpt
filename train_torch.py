@@ -130,16 +130,22 @@ def export(step, lossv):
 def main():
     t0 = time.time()
     model.train()
+    AMP = dev == 'cuda' and os.environ.get('AMP', '1') == '1'
+    scaler = torch.amp.GradScaler(dev, enabled=AMP)
+    print('amp:', AMP)
     for step in range(START + 1, STEPS + 1):
         lr = LR * min(1.0, step / 200) * (0.5 + 0.5 * math.cos(math.pi * min(1.0, step / STEPS)))
         for g in opt.param_groups: g['lr'] = lr
         x, y = get_batch()
-        logits = model(x)
-        loss = torch.nn.functional.cross_entropy(logits.view(-1, V), y.view(-1))
+        with torch.autocast(dev, enabled=AMP):
+            logits = model(x)
+            loss = torch.nn.functional.cross_entropy(logits.view(-1, V), y.view(-1))
         opt.zero_grad(set_to_none=True)
-        loss.backward()
+        scaler.scale(loss).backward()
+        scaler.unscale_(opt)
         torch.nn.utils.clip_grad_norm_(model.parameters(), 1.0)
-        opt.step()
+        scaler.step(opt)
+        scaler.update()
         if step % 100 == 0 or step == 1:
             print('step %4d | loss %.3f | lr %.4f | %4.1fs' % (step, loss.item(), lr, time.time() - t0), flush=True)
         if step % 500 == 0 or step == STEPS:
