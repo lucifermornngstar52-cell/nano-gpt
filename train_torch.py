@@ -16,6 +16,10 @@ BS  = int(os.environ.get('BS', '64'))
 _lr_default = '3e-3' if DM <= 128 else ('1e-3' if DM <= 384 else '4e-4')
 LR  = float(os.environ.get('LR', _lr_default))
 START = int(os.environ.get('START', '0')) # резюм
+# автоподхват номера шага, если рядом лежит step.txt от прошлого запуска
+if os.path.exists('step.txt'):
+    try: START = max(START, int(open('step.txt').read().strip()))
+    except ValueError: pass
 
 # ── корпус ──
 # DATA может быть: pairs.jsonl.gz (старые пары) или corpus_big.txt.gz (готовый текст)
@@ -150,6 +154,8 @@ def export(step, lossv):
         np.savez_compressed(os.path.join(ck, 'weights_big.npz'), **sd_np)
         json.dump(dict(vocab=vocab, cfg=dict(d_model=DM, n_layer=NL, n_head=NH, ctx=CTX)),
                   open(os.path.join(ck, 'meta.json'), 'w', encoding='utf-8'), ensure_ascii=False)
+    open('step.txt', 'w').write(str(step))
+    if ck: open(os.path.join(ck, 'step.txt'), 'w').write(str(step))
     print('  сохранено (шаг %d, loss %.3f)%s' % (step, lossv, ' + на Drive' if ck else ''), flush=True)
 
 def main():
