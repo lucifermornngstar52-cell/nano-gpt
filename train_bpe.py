@@ -72,8 +72,10 @@ if WARM == '1' and os.path.exists('weights_src.npz'):
         model.wpe.copy_(torch.tensor(z['wpe']))
         for l in range(NL):
             b = model.blocks[l]
-            for nm in ('q', 'k', 'v', 'o', 'fc', 'fc2'):
-                getattr(b, nm).weight.copy_(torch.tensor(z[f'{l}{nm}']))
+            for nm in ('q', 'k', 'v', 'o'):
+                getattr(b, nm).weight.copy_(torch.tensor(z[f'{l}{nm}']).T)   # char-модель хранит x@W
+            b['fc'].weight.copy_(torch.tensor(z[f'{l}fc']).T)
+            b['fc2'].weight.copy_(torch.tensor(z[f'{l}fc2']).T)
             b['ln1'].weight.copy_(torch.tensor(z[f'{l}ln1g'])); b['ln1'].bias.copy_(torch.tensor(z[f'{l}ln1b']))
             b['ln2'].weight.copy_(torch.tensor(z[f'{l}ln2g'])); b['ln2'].bias.copy_(torch.tensor(z[f'{l}ln2b']))
         model.lnf.weight.copy_(torch.tensor(z['lnfg'])); model.lnf.bias.copy_(torch.tensor(z['lnfb']))
