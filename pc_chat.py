@@ -13,28 +13,37 @@ WURL = 'https://github.com/lucifermornngstar52-cell/nano-gpt/releases/download/c
 WFILE = os.environ.get('WFILE', 'weights_150m_fp16.npz')
 MFILE = 'meta_150m.json'
 
-def fetch(fn, must=True):
-    if os.path.exists(fn):
+def fetch(fn, must=True, tries=5):
+    if os.path.exists(fn) and os.path.getsize(fn) > 0:
         return
     print('качаю %s ...' % fn)
-    try:
-        req = urllib.request.Request(WURL + fn, headers={'User-Agent': 'Mozilla/5.0'})
-        with urllib.request.urlopen(req, context=_CTX, timeout=120) as r, open(fn, 'wb') as out:
-            total = int(r.headers.get('Content-Length', 0))
-            done = 0
-            while True:
-                chunk = r.read(1 << 20)
-                if not chunk:
-                    break
-                out.write(chunk)
-                done += len(chunk)
-                if total:
-                    print('\r  %.0f%%' % (100 * done / total), end='')
-        print('\r  ок: %.0f МБ' % (os.path.getsize(fn) / 1e6))
-    except Exception as e:
-        if must:
-            print('не скачалось (%s). Положи %s рядом со скриптом вручную.' % (e, fn))
-            sys.exit(1)
+    last_err = None
+    for attempt in range(1, tries + 1):
+        try:
+            req = urllib.request.Request(WURL + fn, headers={'User-Agent': 'Mozilla/5.0'})
+            with urllib.request.urlopen(req, context=_CTX, timeout=60) as r, open(fn, 'wb') as out:
+                total = int(r.headers.get('Content-Length', 0))
+                done = 0
+                while True:
+                    chunk = r.read(1 << 18)
+                    if not chunk:
+                        break
+                    out.write(chunk)
+                    done += len(chunk)
+                    if total:
+                        print('\r  %.0f%%' % (100 * done / total), end='')
+            if total and os.path.getsize(fn) != total:
+                raise IOError('оборвалось: получено %d из %d байт' % (os.path.getsize(fn), total))
+            print('\r  ок: %.0f МБ' % (os.path.getsize(fn) / 1e6))
+            return
+        except Exception as e:
+            last_err = e
+            if os.path.exists(fn):
+                os.remove(fn)
+            print('\r  попытка %d/%d не удалась (%s), повтор...' % (attempt, tries, e))
+    if must:
+        print('не скачалось (%s). Положи %s рядом со скриптом вручную.' % (last_err, fn))
+        sys.exit(1)
 
 fetch(MFILE)
 fetch(WFILE)
