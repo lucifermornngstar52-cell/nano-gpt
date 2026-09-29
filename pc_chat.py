@@ -2,8 +2,12 @@
 # NANO-GPT 150M — локальный чат на ПК (без GPU, чистый Python).
 # Первый запуск сам скачает веса (~280 МБ fp16) с GitHub-релиза.
 # Требования: pip install numpy torch
-import os, sys, json, urllib.request
+import os, sys, json, ssl, urllib.request
 import numpy as np, torch, torch.nn as nn, torch.nn.functional as F
+
+_CTX = ssl.create_default_context()
+_CTX.check_hostname = False
+_CTX.verify_mode = ssl.CERT_NONE
 
 WURL = 'https://github.com/lucifermornngstar52-cell/nano-gpt/releases/download/char-150m/'
 WFILE = os.environ.get('WFILE', 'weights_150m_fp16.npz')
@@ -14,8 +18,19 @@ def fetch(fn, must=True):
         return
     print('качаю %s ...' % fn)
     try:
-        urllib.request.urlretrieve(WURL + fn, fn)
-        print('  ок: %.0f МБ' % (os.path.getsize(fn) / 1e6))
+        req = urllib.request.Request(WURL + fn, headers={'User-Agent': 'Mozilla/5.0'})
+        with urllib.request.urlopen(req, context=_CTX, timeout=120) as r, open(fn, 'wb') as out:
+            total = int(r.headers.get('Content-Length', 0))
+            done = 0
+            while True:
+                chunk = r.read(1 << 20)
+                if not chunk:
+                    break
+                out.write(chunk)
+                done += len(chunk)
+                if total:
+                    print('\r  %.0f%%' % (100 * done / total), end='')
+        print('\r  ок: %.0f МБ' % (os.path.getsize(fn) / 1e6))
     except Exception as e:
         if must:
             print('не скачалось (%s). Положи %s рядом со скриптом вручную.' % (e, fn))
